@@ -1,0 +1,189 @@
+
+#-----------------Namespace-----------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: project
+#----------SECRET--------------
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mongodb-secret
+  namespace: project
+type: Opaque
+data:
+  mongo-root-username: cm9vdA== #root
+  mongo-root-password: cGFzcw== #pass
+
+#-------------ConfigMap------------------------
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mongodb-configmap
+  namespace: project
+data:
+  database_url: mongodb-svc
+
+#----------------Deployment Mongo-DB----------------------
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todo-app-deployment
+  namespace: project
+  labels:
+    app: todo-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: todo-app
+  template:
+    metadata:
+      labels:
+        app: todo-app
+    spec:
+      containers:
+        - name: frontend
+          image: palronaq/todoapp-frontend:v1
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+
+        - name: backend
+          image: palronaq/todoapp-backend:v1
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5000
+          env:
+            - name: MONGO_URL
+              value: "mongodb://root:pass@mongodb-svc:27017/"
+
+        - name: mongodb
+          image: mongo:latest  
+          ports:
+            - containerPort: 27017  
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-secret
+                  key: mongo-root-username
+
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-secret
+                  key: mongo-root-password 
+
+#-----------------Service mongodb------------------
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb-svc
+  namespace: project
+spec:
+  selector:
+    app: todo-app
+  type: NodePort
+  ports:
+    - protocol: TCP
+      port: 27017
+      targetPort: 27017
+      nodePort: 31000
+
+#-----------------Service frontend------------------
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-svc
+  namespace: project
+spec:
+  selector:
+    app: todo-app
+  type: NodePort
+  ports:
+    - protocol: TCP
+      port: 3000
+      targetPort: 3000
+      nodePort: 32000
+
+#-------------------Service backend-----------------
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-svc
+  namespace: project
+spec:
+  selector:
+    app: todo-app
+  type: NodePort
+  ports:
+    - protocol: TCP
+      port: 5000
+      targetPort: 5000
+      nodePort: 31300
+
+#------------------Deployment Mongo-Express----------------
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongo-express-deployment
+  namespace: project
+  labels:
+    app: mongodb-express
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb-express
+  template:
+    metadata:
+      labels:
+        app: mongodb-express
+    spec:
+      containers:
+        - name: mongo-express
+          image: mongo-express 
+          ports:
+            - containerPort: 8081
+          env:
+            - name: ME_CONFIG_MONGODB_ADMINUSERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-secret
+                  key: mongo-root-username
+            - name: ME_CONFIG_MONGODB_ADMINPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-secret
+                  key: mongo-root-password 
+            - name: ME_CONFIG_MONGODB_SERVER
+              valueFrom:
+                configMapKeyRef:
+                  name: mongodb-configmap
+                  key: database_url
+
+#-------------------Service Mongo-Express-------------------
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo-express-svc
+  namespace: project
+spec:
+  selector:
+    app: mongodb-express
+  type: NodePort
+  ports:
+    - protocol: TCP
+      port: 8081
+      targetPort: 8081
+      nodePort: 30100
+      
